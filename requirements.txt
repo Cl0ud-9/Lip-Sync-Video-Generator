@@ -1,8 +1,40 @@
-librosa==0.7.0
-numpy==1.17.1
-opencv-contrib-python>=4.2.0.34
-opencv-python==4.1.0.25
-torch==1.1.0
-torchvision==0.3.0
-tqdm==4.45.0
-numba==0.48
+# ================================
+# Core Scientific Computing
+# ================================
+numpy              # Numerical operations and array handling
+scipy              # Signal processing and scientific utilities
+tqdm               # Progress bars for long-running processes
+
+# ================================
+# Audio Processing
+# ================================
+librosa            # Audio loading, feature extraction (mel spectrograms, etc.)
+soundfile          # Reading/writing WAV audio files
+
+# ================================
+# Image & Video Processing
+# ================================
+opencv-python      # Computer vision operations (image/video frame handling)
+opencv-contrib-python  # Extra OpenCV modules used by Wav2Lip
+imageio            # Reading/writing image sequences
+imageio-ffmpeg     # FFmpeg backend support for video encoding
+
+# ================================
+# Deep Learning (PyTorch)
+# ================================
+torch              # Neural network framework (Wav2Lip model runs on this)
+torchvision        # Image transforms and utilities for PyTorch
+
+# ================================
+# Wav2Lip Model Dependencies
+# ================================
+numba              # Speeds up numerical functions (used by librosa/Wav2Lip)
+scikit-image       # Image processing utilities
+matplotlib         # Visualization (sometimes used for debugging/plots)
+face-alignment     # Face landmark detection used by Wav2Lip
+
+# ================================
+# API & Environment Configuration
+# ================================
+requests           # HTTP requests for ElevenLabs API calls
+python-dotenv      # Loads environment variables from .env file

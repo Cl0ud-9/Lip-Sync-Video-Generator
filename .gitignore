@@ -12,12 +12,9 @@ __pycache__/
 
 # Generated media
 *.mp4
-*.avi
 *.wav
 
 # Temp & output folders
-temp/
-results/
 gfpgan_input/
 gfpgan_output/
 
@@ -34,6 +31,3 @@ Thumbs.db
 
 # Jupyter checkpoints (if any)
 .ipynb_checkpoints/
-
-# Dataset / test text files (optional)
-*.txt
