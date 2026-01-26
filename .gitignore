@@ -1,0 +1,39 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Model checkpoints (too large for GitHub)
+*.pth
+
+# Generated media
+*.mp4
+*.avi
+*.wav
+
+# Temp & output folders
+temp/
+results/
+gfpgan_input/
+gfpgan_output/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment variables / secrets
+.env
+.env.*
+
+# Jupyter checkpoints (if any)
+.ipynb_checkpoints/
+
+# Dataset / test text files (optional)
+*.txt
