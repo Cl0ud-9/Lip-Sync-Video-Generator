@@ -222,16 +222,21 @@ input/face.jpg
 
 ### 🎬 Step 3 — Generate Lip-Synced Video
 
+Go to Wav2Lip Dir : 
+```bash
+cd Wav2Lip
+```
+
 #### 🔹 General Command Format
 
 ```bash
-python Wav2Lip/inference.py --checkpoint_path <path_to_wav2lip_model> --face <path_to_face_image_or_video> --audio <path_to_audio_file> --outfile <output_video_path>
+python inference.py --checkpoint_path <path_to_wav2lip_model> --face <path_to_face_image_or_video> --audio <path_to_audio_file> --outfile <output_video_path>
 ```
 
 #### 🔹 Example Using This Project Structure
 
 ```bash
-python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/face.jpg --audio output/audio.wav --outfile output/output_video.mp4
+python inference.py --checkpoint_path checkpoints/wav2lip.pth --face ..\input\image.jpg --audio ..\input\audio.wav --outfile ..\output\output_video_gpu_fast.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 256
 ```
 
 ---
@@ -293,3 +298,4 @@ Ensure consent before using any person's face or voice.
 ---
 
 **Made with ❤️ for the AI community**
+
