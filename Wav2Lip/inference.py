@@ -55,6 +55,10 @@ parser.add_argument('--nosmooth', default=False, action='store_true',
 args = parser.parse_args()
 args.img_size = 96
 
+# Define and create absolute path for temp directory within Wav2Lip folder
+TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
+os.makedirs(TEMP_DIR, exist_ok=True)
+
 if os.path.isfile(args.face) and args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
 	args.static = True
 
@@ -90,7 +94,7 @@ def face_detect(images):
 	pady1, pady2, padx1, padx2 = args.pads
 	for rect, image in zip(predictions, images):
 		if rect is None:
-			cv2.imwrite('temp/faulty_frame.jpg', image) # check this frame where the face was not detected.
+			cv2.imwrite(os.path.join(TEMP_DIR, 'faulty_frame.jpg'), image) # check this frame where the face was not detected.
 			raise ValueError('Face not detected! Ensure the video contains a face in all the frames.')
 
 		y1 = max(0, rect[1] - pady1)
@@ -188,6 +192,10 @@ def main():
 		full_frames = [cv2.imread(args.face)]
 		fps = args.fps
 
+		if args.resize_factor > 1:
+			full_frames[0] = cv2.resize(full_frames[0], 
+									(full_frames[0].shape[1]//args.resize_factor, full_frames[0].shape[0]//args.resize_factor))
+
 	else:
 		video_stream = cv2.VideoCapture(args.face)
 		fps = video_stream.get(cv2.CAP_PROP_FPS)
@@ -218,10 +226,11 @@ def main():
 
 	if not args.audio.endswith('.wav'):
 		print('Extracting raw audio...')
-		command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
+		temp_wav = os.path.join(TEMP_DIR, 'temp.wav')
+		command = 'ffmpeg -y -i "{}" -strict -2 "{}"'.format(args.audio, temp_wav)
 
 		subprocess.call(command, shell=True)
-		args.audio = 'temp/temp.wav'
+		args.audio = temp_wav
 
 	wav = audio.load_wav(args.audio, 16000)
 	mel = audio.melspectrogram(wav)
@@ -255,7 +264,8 @@ def main():
 			print ("Model loaded")
 
 			frame_h, frame_w = full_frames[0].shape[:-1]
-			out = cv2.VideoWriter('temp/result.avi', 
+			temp_avi = os.path.join(TEMP_DIR, 'result.avi')
+			out = cv2.VideoWriter(temp_avi, 
 									cv2.VideoWriter_fourcc(*'DIVX'), fps, (frame_w, frame_h))
 
 		img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
@@ -275,7 +285,8 @@ def main():
 
 	out.release()
 
-	command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(args.audio, 'temp/result.avi', args.outfile)
+	temp_avi = os.path.join(TEMP_DIR, 'result.avi')
+	command = 'ffmpeg -y -i "{}" -i "{}" -strict -2 -q:v 1 "{}"'.format(args.audio, temp_avi, args.outfile)
 	subprocess.call(command, shell=platform.system() != 'Windows')
 
 if __name__ == '__main__':

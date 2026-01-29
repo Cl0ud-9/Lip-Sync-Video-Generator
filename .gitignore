@@ -13,10 +13,14 @@ __pycache__/
 # Generated media
 *.mp4
 *.wav
+!input/audio.wav
+*.avi
 
 # Temp & output folders
-gfpgan_input/
-gfpgan_output/
+Wav2Lip/temp/*
+!Wav2Lip/temp/.gitkeep
+output/*
+!output/.gitkeep
 
 # OS junk
 .DS_Store
@@ -28,6 +32,7 @@ Thumbs.db
 # Environment variables / secrets
 .env
 .env.*
+!.env.example
 
-# Jupyter checkpoints (if any)
+# Jupyter checkpoints
 .ipynb_checkpoints/

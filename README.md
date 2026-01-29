@@ -26,17 +26,17 @@ Transform a simple text script and a face image into a fully lip-synced video:
 
 - 🗣️ **Natural Speech Synthesis** - Powered by ElevenLabs TTS API  
 - 👄 **Accurate Lip Synchronization** - Using state-of-the-art Wav2Lip  
-- 🖼️ **Simple Input** - Just one face image needed  
+- 🤖 **Smart Pipeline** - Auto-detects audio or script inputs  
 - ⚡ **GPU Acceleration** - CUDA support for faster processing  
 - 📂 **Organized Workflow** - Clean input/output structure  
-- 🎯 **Easy to Use** - Straightforward command-line interface  
+- 🚀 **One-Click Execution** - Run `main.py` and you're done  
 
 ---
 
 ## 🧠 Pipeline Overview
 
 ```text
-Text Script → ElevenLabs TTS → Audio File → Wav2Lip → Lip-Synced Video
+[Input: Script or Audio] → 🤖 main.py (Auto-Pipeline) → [Output: Lip-Synced Video]
 ```
 
 ---
@@ -60,6 +60,7 @@ lip-sync-video-generator/
 │   └── face_detection/detection/sfd/
 │       └── s3fd.pth                     # Face detection model
 │
+├── main.py                              # 🚀 Unified Pipeline (Run this!)
 ├── Elevenlab.py                         # Text-to-speech generator
 ├── requirements.txt                     # Python dependencies
 ├── .env                                 # API key (you create this)
@@ -189,54 +190,36 @@ Wav2Lip/face_detection/detection/sfd/s3fd.pth
 
 ---
 
-## 🎯 Usage
+## 🎯 Usage (The Easy Way)
 
-### 🎙️ Step 1 — Generate Speech Audio
+### 1️⃣ Prepare Input
+- **Face**: Put your image or video in `input/` (e.g., `input/face.jpg`).
+- **Audio**:
+    - **Option A (Text Script)**: Put your script in `input/script.txt`.
+    - **Option B (Audio File)**: Put your audio in `input/audio.wav`.
 
-Place your script in:
-
-```
-input/script.txt
-```
-
-Run:
-
+### 2️⃣ Run
 ```bash
-python Elevenlab.py
+python main.py
 ```
+That's it! The script will automatically detect your input and generate the video.
 
-**Output:**  
-`output/audio.wav`
+**Output:** `output/output_video.mp4`
 
 ---
 
-### 🖼️ Step 2 — Provide Face Image
+## � Advanced / Manual Usage
 
-Place your face image here:
+If you want more control (like specific resize factors or specific file paths), you can run the scripts individually.
 
-```
-input/face.jpg
-```
-
----
-
-### 🎬 Step 3 — Generate Lip-Synced Video
-
-Go to Wav2Lip Dir : 
+### 🎙️ Step 1 — Generate Speech Audio (Optional)
 ```bash
-cd Wav2Lip
+python Elevenlab.py --script input/script.txt --output output/audio.wav
 ```
 
-#### 🔹 General Command Format
-
+### 🎬 Step 2 — Generate Lip-Synced Video
 ```bash
-python inference.py --checkpoint_path <path_to_wav2lip_model> --face <path_to_face_image_or_video> --audio <path_to_audio_file> --outfile <output_video_path>
-```
-
-#### 🔹 Example Using This Project Structure
-
-```bash
-python inference.py --checkpoint_path checkpoints/wav2lip.pth --face ..\input\image.jpg --audio ..\input\audio.wav --outfile ..\output\output_video_gpu_fast.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 256
+python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/image.jpg --audio input/audio.wav --outfile output/output_video.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 256
 ```
 
 ---

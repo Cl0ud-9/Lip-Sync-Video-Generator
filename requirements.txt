@@ -38,3 +38,4 @@ face-alignment     # Face landmark detection used by Wav2Lip
 # ================================
 requests           # HTTP requests for ElevenLabs API calls
 python-dotenv      # Loads environment variables from .env file
+pydub              # Audio file manipulation (mp3 to wav conversion)

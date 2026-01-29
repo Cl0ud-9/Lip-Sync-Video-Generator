@@ -2,7 +2,11 @@
 #!apt-get install ffmpeg
 
 import requests
+import os
+from dotenv import load_dotenv
 from pydub import AudioSegment
+
+load_dotenv()
 
 def generate_audio_with_elevenlabs(script_path, output_audio_path, voice_id, api_key,model_id="eleven_turbo_v2_5", stability=0.6, similarity_boost=0.5):
     """
@@ -57,17 +61,29 @@ def convert_mp3_to_wav(mp3_path, wav_path):
 
 # Usage Example
 if __name__ == "__main__":
-    # Adjust the file paths as needed (these assume your files are in /content/ in Colab)
-    script_file = "/content/script.txt"         # Your text script
-    output_mp3 = "/content/audio.mp3"            # Output audio (MP3) from ElevenLabs
-    output_wav = "/content/audio.wav"            # (Optional) Converted WAV file if required by your pipeline
+    import argparse
 
-    # Replace with your ElevenLabs credentials and chosen voice ID for an Indian accent.
-    voice_id = "Sm1seazb4gs7RSlUVw7c"            # e.g., a voice that sounds Indian (check your ElevenLabs dashboard)
-    api_key = "sk_4ac41c7a950b3f40e804334accf8603747457c08f390261d"
+    parser = argparse.ArgumentParser(description="Generate speech using ElevenLabs API")
+    parser.add_argument("--script", type=str, default="input/script.txt", help="Path to the text script file")
+    parser.add_argument("--output", type=str, default="output/audio.wav", help="Path to save the result audio (WAV)")
+    parser.add_argument("--output_mp3", type=str, default="output/audio.mp3", help="Path to save the intermediate MP3")
+    parser.add_argument("--voice_id", type=str, default="Sm1seazb4gs7RSlUVw7c", help="ElevenLabs Voice ID")
+    parser.add_argument("--api_key", type=str, default=None, help="ElevenLabs API Key (optional, defaults to .env)")
 
-    # Generate audio using ElevenLabs
-    generate_audio_with_elevenlabs(script_file, output_mp3, voice_id, api_key, model_id="eleven_turbo_v2_5" , stability=0.6, similarity_boost=0.5)
+    args = parser.parse_args()
 
-    # Convert the generated MP3 to WAV
-    convert_mp3_to_wav(output_mp3, output_wav)
+    # Load API Key
+    api_key = args.api_key or os.getenv("ELEVENLABS_API_KEY")
+    
+    if not api_key:
+        print("Error: ELEVENLABS_API_KEY not found in environment variables.")
+        exit(1)
+
+    # Ensure output directory exists (for robust CLI usage)
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+
+    # Generate audio
+    generate_audio_with_elevenlabs(args.script, args.output_mp3, args.voice_id, api_key)
+
+    # Convert to WAV
+    convert_mp3_to_wav(args.output_mp3, args.output)
