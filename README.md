@@ -208,7 +208,7 @@ That's it! The script will automatically detect your input and generate the vide
 
 ---
 
-## � Advanced / Manual Usage
+## 🔧 Advanced / Manual Usage
 
 If you want more control (like specific resize factors or specific file paths), you can run the scripts individually.
 
