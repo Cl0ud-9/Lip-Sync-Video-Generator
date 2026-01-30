@@ -104,7 +104,7 @@ ffmpeg -version
 git clone https://github.com/Cl0ud-9/lip-sync-video-generator.git
 ```
 
-Then open it in you code editor.
+Then open it in your code editor.
 
 ---
 
@@ -145,12 +145,12 @@ pip install -r requirements.txt
 
 ### 5️⃣ Configure ElevenLabs API Key
 
-Get your API key from : 
+Get your API key from: 
 https://elevenlabs.io/developers
 
 Create a `.env` file in the root directory:
 
-( Rename the `.env.example` to `.env` and add your api key )
+Rename the `.env.example` file to `.env` and add your API key:
 
 ```
 ELEVENLABS_API_KEY=your_api_key_here
@@ -263,9 +263,6 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 ---
 
-## 🏷️ Topics
-
-`artificial-intelligence` `deep-learning` `computer-vision` `lip-sync` `wav2lip` `text-to-speech` `pytorch` `speech-animation` `video-generation`
 
 ---
 
