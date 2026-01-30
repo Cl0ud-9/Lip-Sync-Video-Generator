@@ -263,9 +263,6 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 ---
 
-
----
-
 ## ⚖️ License
 
 Licensed under the **MIT License** — see [LICENSE](LICENSE).
@@ -280,6 +277,7 @@ Ensure consent before using any person's face or voice.
 ---
 
 **Made with ❤️ for the AI community**
+
 
 
 
