@@ -150,7 +150,7 @@ https://elevenlabs.io/developers
 
 Create a `.env` file in the root directory:
 
-(Rename the `.env.example` file to `.env` and add your API key:)
+(Rename the `.env.example` file to `.env` and add your API key)
 
 ```
 ELEVENLABS_API_KEY=your_api_key_here
@@ -277,6 +277,7 @@ Ensure consent before using any person's face or voice.
 ---
 
 **Made with ❤️ for the AI community**
+
 
 
 
