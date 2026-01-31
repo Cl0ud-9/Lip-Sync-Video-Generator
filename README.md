@@ -221,7 +221,7 @@ python Elevenlab.py --script input/script.txt --output output/audio.wav
 
 ### 🎬 Step 2 — Generate Lip-Synced Video
 ```bash
-python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/image.jpg --audio input/audio.wav --outfile output/output_video.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 256
+python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/face.jpg --audio input/audio.wav --outfile output/output_video.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 256
 ```
 
 ---
@@ -277,6 +277,7 @@ Ensure consent before using any person's face or voice.
 ---
 
 **Made with ❤️ for the AI community**
+
 
 
 
