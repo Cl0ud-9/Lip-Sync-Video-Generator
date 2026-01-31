@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import cv2
 import numpy as np
 
-from .net_s3fd import s3fd
 from .bbox import *
 
 
