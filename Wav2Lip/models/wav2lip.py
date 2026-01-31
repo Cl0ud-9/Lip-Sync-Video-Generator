@@ -1,11 +1,18 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-import math
 
 from .conv import Conv2dTranspose, Conv2d, nonorm_Conv2d
 
 class Wav2Lip(nn.Module):
+    """
+    Wav2Lip Model Architecture.
+    
+    Consists of:
+    - Face Encoder (ResNet-like)
+    - Audio Encoder (2D Conv on Mels)
+    - Face Decoder (with skip connections)
+    """
     def __init__(self):
         super(Wav2Lip, self).__init__()
 

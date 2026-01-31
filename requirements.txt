@@ -16,8 +16,6 @@ soundfile          # Reading/writing WAV audio files
 # ================================
 opencv-python      # Computer vision operations (image/video frame handling)
 opencv-contrib-python  # Extra OpenCV modules used by Wav2Lip
-imageio            # Reading/writing image sequences
-imageio-ffmpeg     # FFmpeg backend support for video encoding
 
 # ================================
 # Deep Learning (PyTorch)
@@ -29,8 +27,6 @@ torchvision        # Image transforms and utilities for PyTorch
 # Wav2Lip Model Dependencies
 # ================================
 numba              # Speeds up numerical functions (used by librosa/Wav2Lip)
-scikit-image       # Image processing utilities
-matplotlib         # Visualization (sometimes used for debugging/plots)
 face-alignment     # Face landmark detection used by Wav2Lip
 
 # ================================

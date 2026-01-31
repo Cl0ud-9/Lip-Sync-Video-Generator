@@ -195,7 +195,7 @@ Wav2Lip/face_detection/detection/sfd/s3fd.pth
 ## 🎯 Usage (The Easy Way)
 
 ### 1️⃣ Prepare Input
-- **Face**: Put your image or video in `input/` (e.g., `input/face.jpg`).
+- **Face**: Put your image or video in `input/` (e.g., `input/face.jpg` or `input/face.mp4`).
 - **Audio**:
     - **Option A (Text Script)**: Put your script in `input/script.txt`.
     - **Option B (Audio File)**: Put your audio in `input/audio.wav`.
