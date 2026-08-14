@@ -1,6 +1,5 @@
 import os
 import torch
-import cv2
 from enum import Enum
 import numpy as np
 

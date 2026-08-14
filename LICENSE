@@ -1,3 +1,5 @@
+NOTE ON SCOPE: This MIT license covers this repo's own code only -- it does NOT apply to the vendored Wav2Lip/ directory, which stays under its original authors' non-commercial terms (see Wav2Lip/NOTICE.md).
+
 MIT License
 
 Copyright (c) 2024 Cl0ud-9

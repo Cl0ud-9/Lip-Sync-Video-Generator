@@ -1,5 +1,4 @@
 import os
-import cv2
 import torch
 from torch.utils.model_zoo import load_url
 
@@ -22,7 +21,11 @@ class SFDDetector(FaceDetector):
         if not os.path.isfile(path_to_detector):
             model_weights = load_url(models_urls['s3fd'])
         else:
-            model_weights = torch.load(path_to_detector)
+            try:
+                # Prefer the safer weights_only mode on torch versions that support it.
+                model_weights = torch.load(path_to_detector, weights_only=True)
+            except TypeError:
+                model_weights = torch.load(path_to_detector)
 
         self.face_detector = s3fd()
         self.face_detector.load_state_dict(model_weights)

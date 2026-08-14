@@ -7,6 +7,12 @@ Perfect for AI demos, virtual presenters, educational content, and speech-driven
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
+> ⚠️ **License note:** the top-level MIT license covers this repo's own code
+> (`main.py`, `Elevenlab.py`, project scaffolding). The vendored `Wav2Lip/`
+> directory is **not** MIT - it remains under the original authors'
+> personal/research/non-commercial-only terms. See
+> [`Wav2Lip/NOTICE.md`](Wav2Lip/NOTICE.md) before any commercial use.
+
 ---
 
 ## 🎥 What This Does
@@ -27,9 +33,11 @@ Transform a simple text script and a face image into a fully lip-synced video:
 - 🗣️ **Natural Speech Synthesis** - Powered by ElevenLabs TTS API  
 - 👄 **Accurate Lip Synchronization** - Using state-of-the-art Wav2Lip  
 - 🤖 **Smart Pipeline** - Auto-detects audio or script inputs  
-- ⚡ **GPU Acceleration** - CUDA support for faster processing  
+- ⚡ **GPU Acceleration** - CUDA support for faster processing (with a `--device` override)  
 - 📂 **Organized Workflow** - Clean input/output structure  
 - 🚀 **One-Click Execution** - Run `main.py` and you're done  
+- 🛠️ **Configurable CLI** - Override face/audio paths, batch size, resize factor, and more  
+- ✅ **Pre-flight Checks** - Verifies ffmpeg and model files *before* doing any work  
 
 ---
 
@@ -54,15 +62,16 @@ lip-sync-video-generator/
 │   ├── audio.wav                        # Generated speech audio
 │   └── output_video.mp4                 # Final lip-synced video
 │
-├── Wav2Lip/                             # Wav2Lip model and scripts
+├── Wav2Lip/                             # Wav2Lip model and scripts (vendored, own license -- see NOTICE.md)
 │   ├── checkpoints/
 │   │   └── wav2lip.pth                  # Wav2Lip model file
-│   └── face_detection/detection/sfd/
-│       └── s3fd.pth                     # Face detection model
+│   ├── face_detection/detection/sfd/
+│   │   └── s3fd.pth                     # Face detection model
+│   └── NOTICE.md                        # Upstream license terms & citation
 │
 ├── main.py                              # 🚀 Unified Pipeline (Run this!)
 ├── Elevenlab.py                         # Text-to-speech generator
-├── requirements.txt                     # Python dependencies
+├── requirements.txt                     # Python dependencies (pinned)
 ├── .env                                 # API key (you create this)
 └── README.md
 ```
@@ -208,20 +217,43 @@ That's it! The script will automatically detect your input and generate the vide
 
 **Output:** `output/output_video.mp4`
 
+### ⚙️ Optional Flags
+
+`main.py` also accepts flags to override the auto-detected defaults -- useful if you
+want to keep multiple face/audio files in `input/` or tune performance:
+
+| Flag | Default | Description |
+|------|---------|--------------|
+| `--face PATH` | auto-detected | Explicit face image/video path |
+| `--audio PATH` | auto-detected | Explicit WAV audio path (skips ElevenLabs) |
+| `--script PATH` | `input/script.txt` | Script to use for ElevenLabs TTS |
+| `--output PATH` | `output/output_video.mp4` | Where to save the final video |
+| `--checkpoint PATH` | `Wav2Lip/checkpoints/wav2lip.pth` | Wav2Lip model checkpoint |
+| `--device {auto,cuda,cpu}` | `auto` | Force a compute device |
+| `--resize-factor N` | `2` | Downscale input frames (try `4` on CPU-only machines) |
+| `--batch-size N` | `128` | Wav2Lip batch size (lower this on out-of-memory errors) |
+| `--smooth` | off | Enable temporal smoothing of face boxes |
+| `--keep-temp` | off | Keep `Wav2Lip/temp/` intermediate files after a run |
+
+Example:
+```bash
+python main.py --face input/my_face.mp4 --resize-factor 4 --batch-size 32 --device cpu
+```
+
 ---
 
 ## 🔧 Advanced / Manual Usage
 
-If you want more control (like specific resize factors or specific file paths), you can run the scripts individually.
+If you want even more control, you can run the scripts individually.
 
-### 🎙️ Step 1 — Generate Speech Audio (Optional)
+### 🎙️ Step 1 - Generate Speech Audio (Optional)
 ```bash
 python Elevenlab.py --script input/script.txt --output output/audio.wav
 ```
 
-### 🎬 Step 2 — Generate Lip-Synced Video
+### 🎬 Step 2 - Generate Lip-Synced Video
 ```bash
-python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/face.jpg --audio input/audio.wav --outfile output/output_video.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 256
+python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/face.jpg --audio input/audio.wav --outfile output/output_video.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 128 --device auto
 ```
 
 ---
@@ -238,12 +270,14 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 | Issue | Solution |
 |------|----------|
-| FFmpeg not found | Restart terminal |
-| CUDA not detected | Install GPU PyTorch build |
+| FFmpeg not found | `main.py` now checks for this up front and tells you before running anything; restart your terminal after installing |
+| CUDA not detected | Install GPU PyTorch build, or pass `--device cpu` explicitly |
+| Out of memory / CUDA OOM | Lower `--batch-size` (try 32 or 16) and/or raise `--resize-factor` |
 | Blurry lips | Use a better face crop |
-| Model not found | Check file paths |
-| Slow processing | Use GPU |
-| API key error | Verify `.env` file |
+| Model not found | Check file paths under `Wav2Lip/checkpoints/` and `Wav2Lip/face_detection/detection/sfd/` |
+| Slow processing | Use GPU (`--device cuda`) |
+| API key error | Verify `.env` file has `ELEVENLABS_API_KEY` set |
+| `ModuleNotFoundError: audioop` / `pyaudioop` | Shouldn't happen anymore -- MP3→WAV conversion now shells out to ffmpeg directly instead of the `pydub` package, which broke on Python 3.13+ |
 
 ---
 
@@ -265,14 +299,23 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 ## ⚖️ License
 
-Licensed under the **MIT License** — see [LICENSE](LICENSE).
+This project's own code is licensed under the **MIT License** - see [LICENSE](LICENSE).
+
+The vendored `Wav2Lip/` directory is **not** covered by that MIT license - it
+remains under the original authors' personal/research/non-commercial-only
+terms. See [Wav2Lip/NOTICE.md](Wav2Lip/NOTICE.md) for the full text and
+citation requirements before any commercial use.
 
 ---
 
 ## 📌 Disclaimer
 
-For educational and research use only.  
-Ensure consent before using any person's face or voice.
+For educational and research use only.
+Ensure consent before using any person's face or voice. `input/script.txt`
+ships with placeholder demo text only - replace it with your own script
+before generating anything, and never use this pipeline to impersonate a
+real person (e.g. fake payment-collection or "urgent action needed" calls)
+without their explicit consent.
 
 ---
 
