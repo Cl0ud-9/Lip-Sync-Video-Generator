@@ -27,10 +27,16 @@ YELLOW = "\033[93m" if _USE_COLOR else ""
 RED = "\033[91m" if _USE_COLOR else ""
 RESET = "\033[0m" if _USE_COLOR else ""
 
-WAV2LIP_DIR = "Wav2Lip"
+# Defaults are anchored to this file's folder (not the current directory) so `python path/to/main.py` works from anywhere.
+# Paths the user passes on the command line stay relative to wherever they ran the command.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+INPUT_DIR = os.path.join(BASE_DIR, "input")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+WAV2LIP_DIR = os.path.join(BASE_DIR, "Wav2Lip")
 DEFAULT_CHECKPOINT = os.path.join(WAV2LIP_DIR, "checkpoints", "wav2lip.pth")
 DEFAULT_FACE_DETECTOR = os.path.join(WAV2LIP_DIR, "face_detection", "detection", "sfd", "s3fd.pth")
-DEFAULT_OUTPUT_VIDEO = os.path.join("output", "output_video.mp4")
+DEFAULT_OUTPUT_VIDEO = os.path.join(OUTPUT_DIR, "output_video.mp4")
+FACE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".mp4", ".avi", ".mov")
 
 
 def _enable_windows_ansi_support() -> None:
@@ -66,6 +72,17 @@ def log(message: str, level: str = "info") -> None:
         print(f"{RED}[ERROR]{RESET} {message}")
 
 
+def positive_int(value: str) -> int:
+    """argparse type for flags that must be an integer >= 1 (0 or negatives would crash or misbehave downstream)."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {value!r}")
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {number}")
+    return number
+
+
 def parse_args() -> argparse.Namespace:
     """Parses command-line arguments; every flag is optional and falls back to auto-detection from input/."""
     parser = argparse.ArgumentParser(
@@ -77,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--audio", type=str, default=None,
                          help="Path to a WAV audio file. If omitted, input/audio.wav or "
                               "input/script.txt (via ElevenLabs) is used instead.")
-    parser.add_argument("--script", type=str, default=os.path.join("input", "script.txt"),
+    parser.add_argument("--script", type=str, default=os.path.join(INPUT_DIR, "script.txt"),
                          help="Path to a text script for ElevenLabs TTS (used only if --audio is not given "
                               "and no input/audio.wav is found).")
     parser.add_argument("--output", type=str, default=DEFAULT_OUTPUT_VIDEO,
@@ -86,10 +103,10 @@ def parse_args() -> argparse.Namespace:
                          help="Path to the Wav2Lip model checkpoint.")
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"],
                          help="Force a compute device instead of auto-detecting CUDA availability.")
-    parser.add_argument("--resize-factor", type=int, default=2,
+    parser.add_argument("--resize-factor", type=positive_int, default=2,
                          help="Downscale input frames by this factor before inference (speeds things up "
                               "and reduces memory use; try 4 on CPU-only machines).")
-    parser.add_argument("--batch-size", type=int, default=128,
+    parser.add_argument("--batch-size", type=positive_int, default=128,
                          help="Wav2Lip inference batch size. Lower this if you hit out-of-memory errors.")
     parser.add_argument("--smooth", action="store_true",
                          help="Enable temporal smoothing of detected face boxes (off by default, matching "
@@ -110,10 +127,8 @@ def check_pre_flight(args: argparse.Namespace) -> bool:
     log("Running pre-flight checks...")
 
     # 1. Check for Environment Variables
-    load_dotenv()
-    if not os.getenv("ELEVENLABS_API_KEY"):
-        log("ELEVENLABS_API_KEY not found in .env or environment variables.", "warn")
-        # Non-fatal: User might provide their own audio file.
+    # The key is only needed if text-to-speech ends up being used, so it is checked there rather than here.
+    load_dotenv(os.path.join(BASE_DIR, ".env"))
 
     # 2. Check for ffmpeg on PATH (required by both ElevenLabs conversion and Wav2Lip muxing)
     if shutil.which("ffmpeg") is None:
@@ -133,8 +148,8 @@ def check_pre_flight(args: argparse.Namespace) -> bool:
         return False
 
     # 4. Check/Create Input and Output Directories
-    os.makedirs("input", exist_ok=True)
-    os.makedirs("output", exist_ok=True)
+    os.makedirs(INPUT_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     return True
 
@@ -154,13 +169,12 @@ def get_input_files(args: argparse.Namespace) -> Tuple[Optional[str], Optional[s
             return None, None
         face_path = args.face
     else:
-        face_extensions = ['*.jpg', '*.png', '*.jpeg', '*.mp4', '*.avi', '*.mov']
-        face_files = []
-
-        # Sorted for deterministic behavior when multiple candidate files are present.
-        for ext in face_extensions:
-            face_files.extend(glob.glob(os.path.join("input", ext)))
-        face_files.sort()
+        # Sorted for deterministic behavior when multiple candidate files are present. Matched
+        # case-insensitively so e.g. PHOTO.JPG is found on Linux/macOS too.
+        face_files = sorted(
+            path for path in glob.glob(os.path.join(INPUT_DIR, "*"))
+            if os.path.isfile(path) and os.path.splitext(path)[1].lower() in FACE_EXTENSIONS
+        )
 
         if not face_files:
             log("No face image or video found in input/ folder!", "error")
@@ -182,22 +196,28 @@ def get_input_files(args: argparse.Namespace) -> Tuple[Optional[str], Optional[s
         log(f"Using custom audio: {args.audio}. Skipping Text-to-Speech.")
         return face_path, args.audio
 
-    audio_path = os.path.join("input", "audio.wav")
-    final_audio_path = os.path.join("output", "audio.wav")
+    audio_path = os.path.join(INPUT_DIR, "audio.wav")
+    final_audio_path = os.path.join(OUTPUT_DIR, "audio.wav")
 
-    if os.path.exists(audio_path):
+    if os.path.isfile(audio_path):
         log(f"Found custom audio: {audio_path}. Skipping Text-to-Speech.")
         return face_path, audio_path
 
-    if os.path.exists(args.script):
+    if os.path.isfile(args.script):
+        if not os.getenv("ELEVENLABS_API_KEY"):
+            log("ELEVENLABS_API_KEY not found in .env or environment variables, which is needed to turn "
+                f"{args.script} into speech. Add it to .env, or provide your own audio via --audio.", "error")
+            return None, None
+
         log(f"No custom audio found. Found script: {args.script}. Running ElevenLabs TTS...")
 
         # Execute the ElevenLabs generation script using the same Python interpreter.
         cmd = [
             sys.executable,
-            "Elevenlab.py",
+            os.path.join(BASE_DIR, "Elevenlab.py"),
             "--script", args.script,
-            "--output", final_audio_path
+            "--output", final_audio_path,
+            "--output_mp3", os.path.join(OUTPUT_DIR, "audio.mp3"),
         ]
 
         try:
@@ -285,7 +305,7 @@ def main():
         sys.exit(1)
     except KeyboardInterrupt:
         log("Process interrupted by user.", "warn")
-        sys.exit(0)
+        sys.exit(130)  # conventional exit status for SIGINT, so scripts can tell this apart from success
 
 
 if __name__ == "__main__":

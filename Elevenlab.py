@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 import requests
 from dotenv import load_dotenv
@@ -24,6 +25,10 @@ load_dotenv()
 
 # Network timeout (seconds) for the ElevenLabs API call, so a stalled connection can't hang forever.
 REQUEST_TIMEOUT = 60
+
+# Transient failures (network blips, 5xx from ElevenLabs) are retried; auth/quota errors (401/429) never are.
+MAX_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 2
 
 
 def generate_audio_with_elevenlabs(
@@ -53,10 +58,14 @@ def generate_audio_with_elevenlabs(
     """
     # Read the input text
     try:
-        with open(script_path, "r", encoding="utf-8") as f:
+        # utf-8-sig so a BOM (Windows Notepad adds one) doesn't end up as a stray character in the spoken text.
+        with open(script_path, "r", encoding="utf-8-sig") as f:
             text = f.read().strip()
     except FileNotFoundError:
         print(f"[ERROR] Script file not found: {script_path}")
+        return False
+    except UnicodeDecodeError:
+        print(f"[ERROR] Script file is not valid UTF-8 text: {script_path}")
         return False
 
     if not text:
@@ -81,30 +90,52 @@ def generate_audio_with_elevenlabs(
 
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
-    try:
-        print(f"[INFO] Sending request to ElevenLabs (Voice ID: {voice_id})...")
-        response = requests.post(url, json=data, headers=headers, timeout=REQUEST_TIMEOUT)
+    print(f"[INFO] Sending request to ElevenLabs (Voice ID: {voice_id})...")
 
-        if response.status_code == 200:
-            os.makedirs(os.path.dirname(output_audio_path), exist_ok=True)
-            with open(output_audio_path, "wb") as out_file:
-                out_file.write(response.content)
-            print(f"[INFO] Audio saved at: {output_audio_path}")
-            return True
-        elif response.status_code == 401:
-            print("[ERROR] ElevenLabs rejected the API key (401 Unauthorized). "
-                  "Check ELEVENLABS_API_KEY in your .env file.")
-        elif response.status_code == 429:
-            print("[ERROR] ElevenLabs rate limit / quota exceeded (429). "
-                  "Wait a bit or check your plan usage before retrying.")
-        else:
-            print(f"[ERROR] ElevenLabs API returned code {response.status_code}: {response.text}")
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        retryable = True
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=REQUEST_TIMEOUT)
 
-    except requests.Timeout:
-        print(f"[ERROR] Request to ElevenLabs timed out after {REQUEST_TIMEOUT}s. "
-              "Check your network connection and try again.")
-    except requests.RequestException as e:
-        print(f"[ERROR] Request failed: {e}")
+            if response.status_code == 200:
+                if not response.content:
+                    print("[ERROR] ElevenLabs returned an empty audio response.")
+                    return False
+                # Written to a temp file first so a failed write can't leave a truncated MP3 behind.
+                os.makedirs(os.path.dirname(output_audio_path) or ".", exist_ok=True)
+                tmp_path = output_audio_path + ".part"
+                with open(tmp_path, "wb") as out_file:
+                    out_file.write(response.content)
+                os.replace(tmp_path, output_audio_path)
+                print(f"[INFO] Audio saved at: {output_audio_path}")
+                return True
+            elif response.status_code == 401:
+                retryable = False
+                print("[ERROR] ElevenLabs rejected the API key (401 Unauthorized). "
+                      "Check ELEVENLABS_API_KEY in your .env file.")
+            elif response.status_code == 429:
+                retryable = False
+                print("[ERROR] ElevenLabs rate limit / quota exceeded (429). "
+                      "Wait a bit or check your plan usage before retrying.")
+            else:
+                # 4xx other than the above are the caller's fault (bad voice id, text too long...): don't retry.
+                retryable = response.status_code >= 500
+                print(f"[ERROR] ElevenLabs API returned code {response.status_code}: {response.text[:500]}")
+
+        except requests.Timeout:
+            print(f"[ERROR] Request to ElevenLabs timed out after {REQUEST_TIMEOUT}s. "
+                  "Check your network connection and try again.")
+        except requests.RequestException as e:
+            print(f"[ERROR] Request failed: {e}")
+        except OSError as e:
+            print(f"[ERROR] Could not write audio to {output_audio_path}: {e}")
+            return False
+
+        if not retryable or attempt == MAX_ATTEMPTS:
+            break
+        delay = RETRY_BACKOFF_SECONDS * attempt
+        print(f"[INFO] Retrying in {delay}s (attempt {attempt + 1}/{MAX_ATTEMPTS})...")
+        time.sleep(delay)
 
     return False
 
@@ -136,7 +167,7 @@ def convert_mp3_to_wav(mp3_path: str, wav_path: str) -> bool:
     if wav_dir:
         os.makedirs(wav_dir, exist_ok=True)
 
-    cmd = ["ffmpeg", "-y", "-i", mp3_path, wav_path]
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", mp3_path, wav_path]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
     if result.returncode != 0:

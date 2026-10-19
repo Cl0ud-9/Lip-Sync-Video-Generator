@@ -58,31 +58,37 @@ def batch_detect(net, imgs, device):
     with torch.no_grad():
         olist = net(imgs)
 
-    bboxlist = []
     for i in range(len(olist) // 2):
         olist[i * 2] = F.softmax(olist[i * 2], dim=1)
     olist = [oelem.data.cpu() for oelem in olist]
+
+    variances = [0.1, 0.2]
+    bboxlist = []
     for i in range(len(olist) // 2):
         ocls, oreg = olist[i * 2], olist[i * 2 + 1]
-        FB, FC, FH, FW = ocls.size()  # feature map size
         stride = 2**(i + 2)    # 4,8,16,32,64,128
-        anchor = stride * 4
-        poss = zip(*np.where(ocls[:, 1, :, :] > 0.05))
-        for Iindex, hindex, windex in poss:
-            axc, ayc = stride / 2 + windex * stride, stride / 2 + hindex * stride
-            score = ocls[:, 1, hindex, windex]
-            loc = oreg[:, :, hindex, windex].contiguous().view(BB, 1, 4)
-            priors = torch.Tensor([[axc / 1.0, ayc / 1.0, stride * 4 / 1.0, stride * 4 / 1.0]]).view(1, 1, 4)
-            variances = [0.1, 0.2]
-            box = batch_decode(loc, priors, variances)
-            box = box[:, 0] * 1.0
-            # cv2.rectangle(imgshow,(int(x1),int(y1)),(int(x2),int(y2)),(0,0,255),1)
-            bboxlist.append(torch.cat([box, score.unsqueeze(1)], 1).cpu().numpy())
-    bboxlist = np.array(bboxlist)
-    if 0 == len(bboxlist):
-        bboxlist = np.zeros((1, BB, 5))
 
-    return bboxlist
+        # Every anchor where any image in the batch clears the threshold, decoded in one shot
+        # (the old per-anchor Python loop was the dominant cost of face detection on videos).
+        hindex, windex = np.nonzero((ocls[:, 1, :, :] > 0.05).any(dim=0).numpy())
+        if len(hindex) == 0:
+            continue
+        hindex, windex = torch.from_numpy(hindex), torch.from_numpy(windex)
+
+        axc = stride / 2 + windex.float() * stride
+        ayc = stride / 2 + hindex.float() * stride
+        priors = torch.stack([axc, ayc, torch.full_like(axc, stride * 4), torch.full_like(axc, stride * 4)], dim=1)
+        priors = priors.view(-1, 1, 4)                                              # (P, 1, 4)
+        loc = oreg[:, :, hindex, windex].permute(2, 0, 1).contiguous()              # (P, B, 4)
+        score = ocls[:, 1, hindex, windex].t().unsqueeze(2)                         # (P, B, 1)
+
+        box = batch_decode(loc, priors, variances)
+        bboxlist.append(torch.cat([box, score], dim=2).numpy())
+
+    if len(bboxlist) == 0:
+        return np.zeros((1, BB, 5))
+
+    return np.concatenate(bboxlist, axis=0)                                         # (N, B, 5)
 
 def flip_detect(net, img, device):
     img = cv2.flip(img, 1)

@@ -225,7 +225,7 @@ want to keep multiple face/audio files in `input/` or tune performance:
 | Flag | Default | Description |
 |------|---------|--------------|
 | `--face PATH` | auto-detected | Explicit face image/video path |
-| `--audio PATH` | auto-detected | Explicit WAV audio path (skips ElevenLabs) |
+| `--audio PATH` | auto-detected | Explicit audio path (WAV, or anything ffmpeg can read, e.g. MP3); skips ElevenLabs |
 | `--script PATH` | `input/script.txt` | Script to use for ElevenLabs TTS |
 | `--output PATH` | `output/output_video.mp4` | Where to save the final video |
 | `--checkpoint PATH` | `Wav2Lip/checkpoints/wav2lip.pth` | Wav2Lip model checkpoint |
@@ -276,7 +276,9 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 | Blurry lips | Use a better face crop |
 | Model not found | Check file paths under `Wav2Lip/checkpoints/` and `Wav2Lip/face_detection/detection/sfd/` |
 | Slow processing | Use GPU (`--device cuda`) |
-| API key error | Verify `.env` file has `ELEVENLABS_API_KEY` set |
+| API key error | Verify `.env` file has `ELEVENLABS_API_KEY` set (only needed when generating speech from `script.txt`; not needed with `--audio` / `input/audio.wav`) |
+| `has no video stream` | `--face` must be an image (`.jpg`/`.jpeg`/`.png`) or a video file, not an audio file |
+| `Face not detected!` | The offending frame is saved to `Wav2Lip/temp/faulty_frame.jpg`; use a clearer, front-facing face or a lower `--resize-factor` |
 | `ModuleNotFoundError: audioop` / `pyaudioop` | Shouldn't happen anymore -- MP3→WAV conversion now shells out to ffmpeg directly instead of the `pydub` package, which broke on Python 3.13+ |
 
 ---
