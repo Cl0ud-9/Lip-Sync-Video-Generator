@@ -14,8 +14,13 @@ models_urls = {
 
 
 class SFDDetector(FaceDetector):
-    def __init__(self, device, path_to_detector=os.path.join(os.path.dirname(os.path.abspath(__file__)), 's3fd.pth'), verbose=False):
+    def __init__(self, device, path_to_detector=None, verbose=False):
         super(SFDDetector, self).__init__(device, verbose)
+
+        # S3FD_MODEL_PATH lets the weights live elsewhere (and lets tests substitute their own).
+        if path_to_detector is None:
+            path_to_detector = os.environ.get('S3FD_MODEL_PATH') or os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 's3fd.pth')
 
         # Initialise the face detector
         if not os.path.isfile(path_to_detector):

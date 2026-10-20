@@ -28,7 +28,7 @@ torchvision>=0.16
 # Wav2Lip Model Dependencies
 # ================================
 numba>=0.58,<0.61        # Speeds up numerical functions (used by librosa/Wav2Lip)
-face-alignment==1.3.5    # Face landmark detection used by Wav2Lip
+# (face detection uses the vendored Wav2Lip/face_detection package; the face-alignment pip package is not needed)
 
 # ================================
 # API & Environment Configuration

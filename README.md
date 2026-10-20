@@ -5,7 +5,8 @@ An AI-powered pipeline that transforms text into realistic lip-synced talking fa
 Perfect for AI demos, virtual presenters, educational content, and speech-driven facial animation.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9-3.12](https://img.shields.io/badge/python-3.9--3.12-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/Cl0ud-9/Lip-Sync-Video-Generator/actions/workflows/ci.yml/badge.svg)](https://github.com/Cl0ud-9/Lip-Sync-Video-Generator/actions/workflows/ci.yml)
 
 > ⚠️ **License note:** the top-level MIT license covers this repo's own code
 > (`main.py`, `Elevenlab.py`, project scaffolding). The vendored `Wav2Lip/`
@@ -38,6 +39,7 @@ Transform a simple text script and a face image into a fully lip-synced video:
 - 🚀 **One-Click Execution** - Run `main.py` and you're done  
 - 🛠️ **Configurable CLI** - Override face/audio paths, batch size, resize factor, and more  
 - ✅ **Pre-flight Checks** - Verifies ffmpeg and model files *before* doing any work  
+- 🧪 **Automated Tests + CI** - Run on every push, with no model weights or API key required  
 
 ---
 
@@ -54,12 +56,13 @@ Transform a simple text script and a face image into a fully lip-synced video:
 ```text
 lip-sync-video-generator/
 │
-├── input/                               # Your input files
-│   ├── script.txt                       # Text to convert into speech
-│   └── face.jpg                         # Face image (front-facing)
+├── input/                               # Your input files (bundled samples shown)
+│   ├── image.jpg                        # Face image (front-facing) or video
+│   ├── audio.wav                        # Pre-recorded speech (takes priority over script.txt)
+│   └── script.txt                       # Text to convert into speech via ElevenLabs
 │
 ├── output/                              # Generated results
-│   ├── audio.wav                        # Generated speech audio
+│   ├── audio.wav                        # Generated speech audio (when TTS is used)
 │   └── output_video.mp4                 # Final lip-synced video
 │
 ├── Wav2Lip/                             # Wav2Lip model and scripts (vendored, own license -- see NOTICE.md)
@@ -71,7 +74,9 @@ lip-sync-video-generator/
 │
 ├── main.py                              # 🚀 Unified Pipeline (Run this!)
 ├── Elevenlab.py                         # Text-to-speech generator
+├── tests/                               # pytest suite (see "Running the Tests")
 ├── requirements.txt                     # Python dependencies (pinned)
+├── requirements-dev.txt                 # + pytest, for development
 ├── .env                                 # API key (you create this)
 └── README.md
 ```
@@ -82,9 +87,9 @@ lip-sync-video-generator/
 
 | Requirement | Purpose |
 |------------|---------|
-| **Python 3.9+** | Core runtime |
+| **Python 3.9 - 3.12** | Core runtime (the pinned `numpy<2` / `numba<0.61` stack doesn't support 3.13+ yet) |
 | **FFmpeg** | Video processing |
-| **ElevenLabs API Key** | Speech generation |
+| **ElevenLabs API Key** | Speech generation *(only if you generate speech from a script)* |
 | **NVIDIA GPU + CUDA** *(Optional)* | Faster processing |
 
 ---
@@ -110,7 +115,8 @@ ffmpeg -version
 ### 1️⃣ Clone Repository
 
 ```bash
-git clone https://github.com/Cl0ud-9/lip-sync-video-generator.git
+git clone https://github.com/Cl0ud-9/Lip-Sync-Video-Generator.git
+cd Lip-Sync-Video-Generator
 ```
 
 Then open it in your code editor.
@@ -125,7 +131,10 @@ python -m venv .venv
 ```
 #### Activate Environment
 ```bash
+# Windows
 .\.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
 ```
 
 ---
@@ -134,12 +143,12 @@ python -m venv .venv
 
 #### CPU Device Only
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ```
 
 #### NVIDIA GPU Device (CUDA 12.1)
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 ```
 
 ---
@@ -159,7 +168,7 @@ https://elevenlabs.io/developers
 
 Create a `.env` file in the root directory:
 
-( Rename the `.env.example` file to `.env` and add your API key )
+( Copy `.env.example` to `.env` and add your API key. Skip this step entirely if you will only ever supply your own audio. )
 
 ```
 ELEVENLABS_API_KEY=your_api_key_here
@@ -204,10 +213,11 @@ Wav2Lip/face_detection/detection/sfd/s3fd.pth
 ## 🎯 Usage (The Easy Way)
 
 ### 1️⃣ Prepare Input
-- **Face**: Put your image or video in `input/` (e.g., `input/face.jpg` or `input/face.mp4`).
-- **Audio**:
-    - **Option A (Text Script)**: Put your script in `input/script.txt`.
-    - **Option B (Audio File)**: Put your audio in `input/audio.wav`.
+- **Face**: Put your image or video in `input/` (`.jpg`, `.jpeg`, `.png`, `.mp4`, `.avi` or `.mov`). If several are present, the first one alphabetically is used (with a warning) - or pick one with `--face`.
+- **Audio** (checked in this order):
+    1. `--audio PATH` on the command line.
+    2. **`input/audio.wav`** - if this file exists it is used and ElevenLabs is skipped. The repo ships a sample `audio.wav`, so **delete or rename it** if you want your own `script.txt` spoken instead.
+    3. **`input/script.txt`** - converted to speech with ElevenLabs (needs `ELEVENLABS_API_KEY`).
 
 ### 2️⃣ Run
 ```bash
@@ -240,6 +250,12 @@ Example:
 python main.py --face input/my_face.mp4 --resize-factor 4 --batch-size 32 --device cpu
 ```
 
+Relative paths you pass on the command line are resolved from your current directory; the built-in defaults
+(`input/`, `output/`, `Wav2Lip/`) are resolved from the repository folder, so `main.py` works from anywhere.
+
+> **Long videos:** all frames that will be used are loaded into memory at once. For long or high-resolution
+> videos, raise `--resize-factor` (or trim the clip) to keep memory use reasonable.
+
 ---
 
 ## 🔧 Advanced / Manual Usage
@@ -250,11 +266,15 @@ If you want even more control, you can run the scripts individually.
 ```bash
 python Elevenlab.py --script input/script.txt --output output/audio.wav
 ```
+Transient network / server errors are retried automatically; authentication (401) and quota (429) errors are not.
 
 ### 🎬 Step 2 - Generate Lip-Synced Video
 ```bash
-python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/face.jpg --audio input/audio.wav --outfile output/output_video.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 128 --device auto
+python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --face input/image.jpg --audio input/audio.wav --outfile output/output_video.mp4 --resize_factor 2 --nosmooth --wav2lip_batch_size 128 --device auto
 ```
+
+Set `S3FD_MODEL_PATH` to load the face-detection weights from somewhere other than
+`Wav2Lip/face_detection/detection/sfd/s3fd.pth`.
 
 ---
 
@@ -263,6 +283,21 @@ python Wav2Lip/inference.py --checkpoint_path Wav2Lip/checkpoints/wav2lip.pth --
 ```bash
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
+
+---
+
+## 🧪 Running the Tests
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu   # or your CUDA build
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+The suite needs **no model weights, GPU, network or API key**: the end-to-end tests build random-weight models,
+which exercises the whole pipeline's mechanics (frame reading, batching, encoding, error handling) but says nothing
+about lip-sync *quality*. ElevenLabs calls are mocked. `ffmpeg` / `ffprobe` must be on your `PATH`; the end-to-end
+tests take about two minutes (`-m "not slow"` skips them). The same tests run in CI on every push.
 
 ---
 
