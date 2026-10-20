@@ -253,8 +253,9 @@ python main.py --face input/my_face.mp4 --resize-factor 4 --batch-size 32 --devi
 Relative paths you pass on the command line are resolved from your current directory; the built-in defaults
 (`input/`, `output/`, `Wav2Lip/`) are resolved from the repository folder, so `main.py` works from anywhere.
 
-> **Long videos:** all frames that will be used are loaded into memory at once. For long or high-resolution
-> videos, raise `--resize-factor` (or trim the clip) to keep memory use reasonable.
+> **Long videos:** frames are streamed from disk (face boxes are found in a first pass, then the video is re-read
+> for rendering), so memory use depends on `--batch-size` and the frame size, *not* on how long the video is.
+> If you still run out of memory on very large frames, lower `--batch-size` or raise `--resize-factor`.
 
 ---
 

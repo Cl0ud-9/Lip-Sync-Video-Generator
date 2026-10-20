@@ -11,7 +11,7 @@ import os
 import shutil
 import subprocess
 import warnings
-from typing import Any, Generator, List, Tuple
+from typing import Any, Generator, Iterable, List, Optional, Tuple
 
 import audio
 import cv2
@@ -93,69 +93,91 @@ def _is_out_of_memory(exc: BaseException) -> bool:
     return "out of memory" in message or "can't allocate memory" in message
 
 
-def face_detect(images: List[np.ndarray], device: str, batch_size: int, pads: List[int], nosmooth: bool) -> List[List[Any]]:
+def _detect_with_backoff(detector: Any, chunk: List[np.ndarray], state: dict, device: str) -> List[Any]:
     """
-    Detects faces in a list of images using the specified device and batch size.
+    Runs the detector on a chunk of frames, halving the batch size (recorded in state) whenever it runs out of memory.
+    Only genuine out-of-memory errors are retried; anything else is a real bug and shouldn't be masked.
+    """
+    try:
+        return detector.get_detections_for_batch(np.array(chunk))
+    except RuntimeError as exc:
+        if not _is_out_of_memory(exc):
+            raise
+        if len(chunk) == 1:
+            raise RuntimeError('Image too big to run face detection. Please use the --resize_factor argument') from exc
+        state['batch_size'] = max(1, len(chunk) // 2)
+        if device == 'cuda':
+            torch.cuda.empty_cache()
+        print(f'Recovering from OOM error; New batch size: {state["batch_size"]}')
+        # Redo this chunk in smaller pieces; the size is re-read each time so later pieces benefit from any
+        # further shrinking instead of re-trying sizes that are already known to fail.
+        results: List[Any] = []
+        start = 0
+        while start < len(chunk):
+            size = state['batch_size']
+            results.extend(_detect_with_backoff(detector, chunk[start:start + size], state, device))
+            start += size
+        return results
+
+
+def detect_face_boxes(frames: Iterable[np.ndarray], device: str, batch_size: int, pads: List[int], nosmooth: bool,
+                      total: Optional[int] = None) -> List[Tuple[int, int, int, int]]:
+    """
+    Detects the face in every frame, streaming through `frames` so that only one detection batch is ever in memory
+    (the boxes themselves are tiny, so memory use no longer grows with video length).
 
     Args:
-        images (List[np.ndarray]): List of images (frames).
+        frames (Iterable[np.ndarray]): Frames (BGR), consumed lazily.
         device (str): 'cuda' or 'cpu'.
         batch_size (int): Batch size for face detection.
         pads (List[int]): Padding [top, bottom, left, right].
         nosmooth (bool): If True, disables smoothing.
+        total (Optional[int]): Expected number of frames, only used for the progress bar.
 
     Returns:
-        List[List[Any]]: List of results containing crop images and coordinates.
+        List[Tuple[int, int, int, int]]: One (y1, y2, x1, x2) crop box per frame.
     """
     detector = face_detection.FaceAlignment(face_detection.LandmarksType._2D,
                                             flip_input=False, device=device)
-
-    while True:
-        predictions = []
-        try:
-            for i in tqdm(range(0, len(images), batch_size), desc="Face Detection"):
-                predictions.extend(detector.get_detections_for_batch(np.array(images[i:i + batch_size])))
-        except RuntimeError as exc:
-            # Only retry on genuine out-of-memory errors; anything else is a real bug and shouldn't be masked.
-            if not _is_out_of_memory(exc):
-                raise
-            if batch_size == 1:
-                raise RuntimeError('Image too big to run face detection. Please use the --resize_factor argument') from exc
-            batch_size //= 2
-            if device == 'cuda':
-                torch.cuda.empty_cache()
-            print(f'Recovering from OOM error; New batch size: {batch_size}')
-            continue
-        break
-
-    results = []
+    state = {'batch_size': batch_size}
     pady1, pady2, padx1, padx2 = pads
-
     temp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
 
-    for rect, image in zip(predictions, images):
-        if rect is None:
-            os.makedirs(temp_dir, exist_ok=True)
-            cv2.imwrite(os.path.join(temp_dir, 'faulty_frame.jpg'), image)
-            raise ValueError('Face not detected! Ensure the video contains a face in all the frames.')
+    results = []
+    chunk: List[np.ndarray] = []
 
-        y1 = max(0, rect[1] - pady1)
-        y2 = min(image.shape[0], rect[3] + pady2)
-        x1 = max(0, rect[0] - padx1)
-        x2 = min(image.shape[1], rect[2] + padx2)
+    def flush() -> None:
+        for rect, image in zip(_detect_with_backoff(detector, chunk, state, device), chunk):
+            if rect is None:
+                os.makedirs(temp_dir, exist_ok=True)
+                cv2.imwrite(os.path.join(temp_dir, 'faulty_frame.jpg'), image)
+                raise ValueError('Face not detected! Ensure the video contains a face in all the frames.')
 
-        results.append([x1, y1, x2, y2])
+            y1 = max(0, rect[1] - pady1)
+            y2 = min(image.shape[0], rect[3] + pady2)
+            x1 = max(0, rect[0] - padx1)
+            x2 = min(image.shape[1], rect[2] + padx2)
+            results.append([x1, y1, x2, y2])
+        progress.update(len(chunk))
+        chunk.clear()
+
+    with tqdm(total=total, desc="Face Detection", unit="frame") as progress:
+        for frame in frames:
+            chunk.append(frame)
+            if len(chunk) >= state['batch_size']:
+                flush()
+        if chunk:
+            flush()
+
+    del detector
+    if device == 'cuda':
+        torch.cuda.empty_cache()
 
     boxes = np.array(results)
     if not nosmooth:
         boxes = get_smoothened_boxes(boxes, T=5)
 
-    final_results = [[image[y1: y2, x1:x2], (y1, y2, x1, x2)] for image, (x1, y1, x2, y2) in zip(images, boxes)]
-
-    del detector
-    if device == 'cuda':
-        torch.cuda.empty_cache()
-    return final_results
+    return [(y1, y2, x1, x2) for x1, y1, x2, y2 in boxes]
 
 
 def _stack_batch(img_batch: List[np.ndarray], mel_batch: List[np.ndarray], img_size: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -171,40 +193,56 @@ def _stack_batch(img_batch: List[np.ndarray], mel_batch: List[np.ndarray], img_s
     return img_batch_arr, mel_batch_arr
 
 
-def datagen(frames: List[np.ndarray], mels: List[np.ndarray], args: argparse.Namespace, device: str) -> Generator:
+def frame_stream(args: argparse.Namespace, limit: int) -> Generator[Tuple[int, np.ndarray], None, None]:
     """
-    Generator function that yields batches of data for the model.
+    Yields (index, frame) forever: the first `limit` frames of the input in order, then looping back to the start
+    (a short video under longer audio repeats). The video is re-read from disk on each loop instead of being kept in
+    memory. Static input just repeats its first frame (the very same array each time: callers must copy it
+    before drawing on it, which keeps a whole batch from holding 128 identical full-size copies).
+    """
+    if args.static:
+        first = next(iter_frames(args, 1), None)
+        if first is None:
+            raise RuntimeError(f'Could not read any frames from {args.face}')
+        while True:
+            yield 0, first
+
+    while True:
+        produced = False
+        for index, frame in enumerate(iter_frames(args, limit)):
+            produced = True
+            yield index, frame
+        if not produced:
+            raise RuntimeError(f'Could not read any frames from {args.face}')
+
+
+def datagen(boxes: Optional[List[Tuple[int, int, int, int]]], mels: List[np.ndarray], args: argparse.Namespace,
+            ) -> Generator:
+    """
+    Generator function that yields batches of data for the model, re-reading frames from the input as it goes.
+
+    boxes holds one (y1, y2, x1, x2) crop per input frame, or is None to use the constant --box region.
     """
     img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
+    frames = frame_stream(args, 1 if args.static else len(mels))
 
-    # In static mode only the first frame is ever used, so don't detect faces in (or crop) the rest.
-    det_frames = frames[:1] if args.static else frames
-
-    if args.box[0] == -1:
-        face_det_results = face_detect(det_frames, device, args.face_det_batch_size, args.pads, args.nosmooth)
-    else:
-        print('Using the specified bounding box instead of face detection...')
-        y1, y2, x1, x2 = args.box
-        face_det_results = [[f[y1: y2, x1:x2], (y1, y2, x1, x2)] for f in det_frames]
-
-    # The same face crop is fed to the model for every audio step in static mode: resize it once.
     static_face = None
-    if args.static:
-        static_face = cv2.resize(face_det_results[0][0], (args.img_size, args.img_size))
+    for m in mels:
+        index, frame = next(frames)
+        coords = tuple(args.box) if boxes is None else boxes[index]
+        y1, y2, x1, x2 = coords
 
-    for i, m in enumerate(mels):
-        idx = 0 if args.static else i % len(frames)
-        frame_to_save = frames[idx].copy()
-        coords = face_det_results[idx][1]
-
+        # The same face crop is fed to the model for every audio step in static mode: resize it once.
         if static_face is not None:
             face = static_face
         else:
-            face = cv2.resize(face_det_results[idx][0], (args.img_size, args.img_size))
+            face = cv2.resize(frame[y1:y2, x1:x2], (args.img_size, args.img_size))
+            if args.static:
+                static_face = face
 
         img_batch.append(face)
         mel_batch.append(m)
-        frame_batch.append(frame_to_save)
+        frame_batch.append(frame)
         coords_batch.append(coords)
 
         if len(img_batch) >= args.wav2lip_batch_size:
@@ -212,6 +250,7 @@ def datagen(frames: List[np.ndarray], mels: List[np.ndarray], args: argparse.Nam
             yield img_batch_arr, mel_batch_arr, frame_batch, coords_batch
             img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
 
+    frames.close()
     if len(img_batch) > 0:
         img_batch_arr, mel_batch_arr = _stack_batch(img_batch, mel_batch, args.img_size)
         yield img_batch_arr, mel_batch_arr, frame_batch, coords_batch
@@ -267,10 +306,18 @@ def get_video_fps(path: str, default_fps: float) -> float:
     return fps
 
 
-def read_frames(args: argparse.Namespace, max_frames: int) -> List[np.ndarray]:
+def count_video_frames(path: str) -> Optional[int]:
+    """Best-effort frame count (only used for progress bars); None when the container doesn't report one."""
+    video_stream = cv2.VideoCapture(path)
+    count = int(video_stream.get(cv2.CAP_PROP_FRAME_COUNT)) if video_stream.isOpened() else 0
+    video_stream.release()
+    return count if count > 0 else None
+
+
+def iter_frames(args: argparse.Namespace, max_frames: int) -> Generator[np.ndarray, None, None]:
     """
-    Reads (and resizes / rotates / crops) frames from the face image or video, stopping after max_frames
-    so a long video paired with short audio doesn't load frames that would just be thrown away.
+    Lazily yields (resized / rotated / cropped) frames from the face image or video, stopping after max_frames
+    so a long video paired with short audio doesn't decode frames that would just be thrown away.
     """
     if _is_image(args.face):
         # imdecode(fromfile) rather than imread so non-ASCII paths work on Windows.
@@ -280,38 +327,38 @@ def read_frames(args: argparse.Namespace, max_frames: int) -> List[np.ndarray]:
         if args.resize_factor > 1:
             image = cv2.resize(image, (max(1, image.shape[1] // args.resize_factor),
                                        max(1, image.shape[0] // args.resize_factor)))
-        return [image]
+        yield image
+        return
 
     video_stream = cv2.VideoCapture(args.face)
     if not video_stream.isOpened():
         video_stream.release()
         raise ValueError(f'Could not open video: {args.face}')
 
-    print('Reading video frames...')
-    full_frames = []
-    while len(full_frames) < max_frames:
-        still_reading, frame = video_stream.read()
-        if not still_reading:
-            break
+    try:
+        count = 0
+        while count < max_frames:
+            still_reading, frame = video_stream.read()
+            if not still_reading:
+                break
 
-        if args.resize_factor > 1:
-            frame = cv2.resize(frame, (max(1, frame.shape[1] // args.resize_factor),
-                                       max(1, frame.shape[0] // args.resize_factor)))
+            if args.resize_factor > 1:
+                frame = cv2.resize(frame, (max(1, frame.shape[1] // args.resize_factor),
+                                           max(1, frame.shape[0] // args.resize_factor)))
 
-        if args.rotate:
-            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            if args.rotate:
+                frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
-        y1, y2, x1, x2 = args.crop
-        if x2 == -1:
-            x2 = frame.shape[1]
-        if y2 == -1:
-            y2 = frame.shape[0]
+            y1, y2, x1, x2 = args.crop
+            if x2 == -1:
+                x2 = frame.shape[1]
+            if y2 == -1:
+                y2 = frame.shape[0]
 
-        frame = frame[y1:y2, x1:x2]
-        full_frames.append(frame)
-
-    video_stream.release()
-    return full_frames
+            yield frame[y1:y2, x1:x2]
+            count += 1
+    finally:
+        video_stream.release()
 
 
 def build_mel_chunks(mel: np.ndarray, fps: float) -> List[np.ndarray]:
@@ -355,7 +402,9 @@ def mux_audio_video(audio_path: str, video_path: str, outfile: str) -> None:
         run_ffmpeg(['-i', audio_path, '-i', video_path,
                     '-vf', 'crop=trunc(iw/2)*2:trunc(ih/2)*2',
                     '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-                    '-c:a', 'aac', '-shortest', outfile])
+                    # No -shortest: the video is a few frames shorter than the audio (mel window), and trimming the
+                    # audio to match would cut off the end of the last word.
+                    '-c:a', 'aac', outfile])
     except RuntimeError as exc:
         print(f"[WARN] H.264 encode failed, retrying with ffmpeg defaults:\n{exc}")
         run_ffmpeg(['-i', audio_path, '-i', video_path, '-strict', '-2', '-q:v', '1', outfile])
@@ -460,11 +509,14 @@ def main():
     mel_chunks = build_mel_chunks(mel, fps)
     print(f"Length of mel chunks: {len(mel_chunks)}")
 
-    # Read only as many frames as will actually be used (a single one in static mode).
-    full_frames = read_frames(args, 1 if args.static else len(mel_chunks))
-    if not full_frames:
+    # Frames are streamed rather than loaded up front, so memory use doesn't grow with the length of the video.
+    # Pass 1 finds the face box in each frame; pass 2 (inside datagen) re-reads the frames and renders them.
+    n_frames = 1 if args.static else len(mel_chunks)
+    first_frame = next(iter_frames(args, 1), None)
+    if first_frame is None:
         raise ValueError(f'No frames could be read from {args.face}')
-    print(f"Number of frames available for inference: {len(full_frames)}")
+    frame_h, frame_w = first_frame.shape[:2]
+    del first_frame
 
     batch_size = args.wav2lip_batch_size
 
@@ -472,10 +524,17 @@ def main():
     model = load_model(args.checkpoint_path, device)
     print("Model loaded")
 
-    # Generate Batches
-    gen = datagen(full_frames.copy(), mel_chunks, args, device)
+    if args.box[0] == -1:
+        total = 1 if args.static else count_video_frames(args.face)
+        boxes = detect_face_boxes(iter_frames(args, n_frames), device, args.face_det_batch_size, args.pads,
+                                  args.nosmooth, total=None if total is None else min(total, n_frames))
+        print(f"Number of frames available for inference: {len(boxes)}")
+    else:
+        print('Using the specified bounding box instead of face detection...')
+        boxes = None
 
-    frame_h, frame_w = full_frames[0].shape[:2]
+    gen = datagen(boxes, mel_chunks, args)
+
     temp_avi = os.path.join(temp_dir, 'result.avi')
     out = open_video_writer(temp_avi, fps, (frame_w, frame_h))
 
@@ -495,6 +554,8 @@ def main():
                 y1, y2, x1, x2 = c
                 p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
 
+                if args.static:
+                    f = f.copy()  # static mode shares one frame across the batch; don't paste onto the shared one
                 f[y1:y2, x1:x2] = p
                 out.write(f)
     finally:

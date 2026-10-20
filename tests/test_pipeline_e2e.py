@@ -41,6 +41,7 @@ def media(tmp_path_factory):
         sf.write(str(root / name), (0.3 * np.sin(2 * np.pi * 220 * t)).astype(np.float32), sr)
 
     tone("tone2s.wav", 2.0)
+    tone("tone4s.wav", 4.0)  # longer than the 1.6 s / 40-frame clip, so the video has to loop
     tone("tone44k.wav", 1.0, sr=44100)
     tone("short.wav", 0.1)
     sf.write(str(root / "empty.wav"), np.zeros(0, dtype=np.float32), 16000)
@@ -159,3 +160,30 @@ def test_mux_handles_a_genuinely_odd_sized_intermediate_video(media, tmp_path):
     video = probe(out)["video"]
     assert video["codec_name"] == "h264" and video["pix_fmt"] == "yuv420p"
     assert (video["width"], video["height"]) == (126, 94)
+
+
+def test_mux_never_trims_the_audio_track(media, tmp_path):
+    """The generated video is slightly shorter than the speech; the end of the last word must not be cut off."""
+    sys.path.insert(0, WAV2LIP_DIR)
+    import inference
+
+    short_avi = tmp_path / "short.avi"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=64x64:d=1:r=25",
+                    "-c:v", "mpeg4", str(short_avi)], check=True)  # 1 s of video vs a 2 s tone
+    out = tmp_path / "muxed.mp4"
+    inference.mux_audio_video(str(media / "tone2s.wav"), str(short_avi), str(out))
+
+    result = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration",
+                             "-of", "csv=p=0", str(out)], capture_output=True, text=True, check=True)
+    assert float(result.stdout.strip()) >= 1.95
+
+
+def test_video_shorter_than_audio_loops_and_covers_the_whole_audio(media, infer):
+    """clip.avi has 40 frames; 4 s of audio needs ~97, so the (streamed) video must wrap around."""
+    _, out = infer(media / "clip.avi", media / "tone4s.wav", "--resize_factor", 2, "--nosmooth")
+    capture = cv2.VideoCapture(str(out))
+    frames = 0
+    while capture.read()[0]:
+        frames += 1
+    capture.release()
+    assert 95 <= frames <= 100, frames
