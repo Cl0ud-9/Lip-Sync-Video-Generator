@@ -292,7 +292,9 @@ def get_video_fps(path: str, default_fps: float) -> float:
     video_stream = cv2.VideoCapture(path)
     if not video_stream.isOpened():
         video_stream.release()
-        raise ValueError(f'Could not open video: {path}')
+        # Depending on the platform's OpenCV build, audio-only files either fail to open (e.g. Linux) or open with no
+        # video stream (see below); both deserve the same explanation.
+        raise ValueError(f'Could not open {path} as a video; --face must be an image or a video file.')
     # An audio-only file "opens" fine but reports 0x0 and then blocks forever on read(), so reject it here.
     has_video = video_stream.get(cv2.CAP_PROP_FRAME_WIDTH) > 0 and video_stream.get(cv2.CAP_PROP_FRAME_HEIGHT) > 0
     fps = video_stream.get(cv2.CAP_PROP_FPS)

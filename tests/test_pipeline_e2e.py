@@ -116,7 +116,7 @@ def test_output_directory_is_created(media, infer, tmp_path):
 
 @pytest.mark.parametrize("face, audio, message", [
     ("odd.jpg", "empty.wav", "No audio samples"),
-    ("tone2s.wav", "tone2s.wav", "no video stream"),   # audio-only file as --face used to hang forever
+    ("tone2s.wav", "tone2s.wav", "must be an image or a video file"),   # audio-only --face used to hang forever
     ("missing.jpg", "tone2s.wav", "valid path"),
     ("odd.jpg", "missing.wav", "valid path"),
 ])
@@ -151,8 +151,10 @@ def test_mux_handles_a_genuinely_odd_sized_intermediate_video(media, tmp_path):
     import inference
 
     odd_avi = tmp_path / "odd.avi"
+    # rawvideo/bgr24 (no chroma subsampling) is what lets an odd size survive: lossy yuv420 encoders, like the one
+    # on some ffmpeg builds, quietly round 127x95 down to 126x94 and would make this test meaningless.
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=127x95:d=1:r=25",
-                    "-c:v", "mpeg4", str(odd_avi)], check=True)
+                    "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(odd_avi)], check=True)
     assert probe(odd_avi)["video"]["width"] == 127  # really odd
 
     out = tmp_path / "muxed.mp4"

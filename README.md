@@ -313,7 +313,7 @@ tests take about two minutes (`-m "not slow"` skips them). The same tests run in
 | Model not found | Check file paths under `Wav2Lip/checkpoints/` and `Wav2Lip/face_detection/detection/sfd/` |
 | Slow processing | Use GPU (`--device cuda`) |
 | API key error | Verify `.env` file has `ELEVENLABS_API_KEY` set (only needed when generating speech from `script.txt`; not needed with `--audio` / `input/audio.wav`) |
-| `has no video stream` | `--face` must be an image (`.jpg`/`.jpeg`/`.png`) or a video file, not an audio file |
+| `--face must be an image or a video file` | The `--face` input is an audio file or something OpenCV can't open; use a `.jpg`/`.jpeg`/`.png` image or a video |
 | `Face not detected!` | The offending frame is saved to `Wav2Lip/temp/faulty_frame.jpg`; use a clearer, front-facing face or a lower `--resize-factor` |
 | `ModuleNotFoundError: audioop` / `pyaudioop` | Shouldn't happen anymore -- MP3→WAV conversion now shells out to ffmpeg directly instead of the `pydub` package, which broke on Python 3.13+ |
 

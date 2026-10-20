@@ -274,7 +274,7 @@ def test_video_fps_falls_back_when_container_reports_none(video, monkeypatch):
 def test_audio_only_file_is_rejected_instead_of_hanging(tmp_path):
     wav = tmp_path / "tone.wav"
     sf.write(str(wav), np.zeros(16000, dtype=np.float32), 16000)
-    with pytest.raises(ValueError, match="no video stream"):
+    with pytest.raises(ValueError, match="must be an image or a video file"):
         inference.get_video_fps(str(wav), default_fps=25)
 
 
