@@ -151,10 +151,12 @@ def test_mux_handles_a_genuinely_odd_sized_intermediate_video(media, tmp_path):
     import inference
 
     odd_avi = tmp_path / "odd.avi"
-    # rawvideo/bgr24 (no chroma subsampling) is what lets an odd size survive: lossy yuv420 encoders, like the one
-    # on some ffmpeg builds, quietly round 127x95 down to 126x94 and would make this test meaningless.
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=127x95:d=1:r=25",
-                    "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(odd_avi)], check=True)
+    # Raw frames with an explicit size on stdin: nothing (a lavfi source, a filter, a yuv420 encoder) gets the chance
+    # to quietly round 127x95 down to 126x94, which some ffmpeg builds do and which would make this test vacuous.
+    frames = bytes(127 * 95 * 3) * 25
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", "127x95",
+                    "-r", "25", "-i", "-", "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(odd_avi)],
+                   input=frames, check=True)
     assert probe(odd_avi)["video"]["width"] == 127  # really odd
 
     out = tmp_path / "muxed.mp4"
